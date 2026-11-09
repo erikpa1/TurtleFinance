@@ -172,7 +172,7 @@ export default function SettingsDock() {
                         </Row>
                         <SourceFootnote style={{ marginTop: -4 }}>
                             the daily run refreshes, in order: company prices and fundamentals, the factor series on § 05 Oil & gas
-                            (Brent, WTI, Henry Hub, TTF, S&P 500) and the ECB reference rates used by § 08 Ledger & tax
+                            (Brent, WTI, Henry Hub, TTF, S&P 500) and the ECB reference rates used by § 09 Ledger & tax
                         </SourceFootnote>
 
                         <div style={{ margin: "18px 0 8px" }}><SectionLabel>Local AI (Ollama)</SectionLabel></div>

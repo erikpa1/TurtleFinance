@@ -349,6 +349,10 @@ func syncCompany(org primitive.ObjectID, c *Company, forcePrices bool, forceFund
 	}
 	if c.SyncError != "" {
 		lgr.Error("sync %s: %s", c.Ticker, c.SyncError)
+	}
+	// Only a failed price download fails the sync; missing fundamentals are
+	// recorded on the company (syncError) but prices + metrics are fine.
+	if strings.Contains(c.SyncError, "prices:") {
 		return errors.New(c.SyncError)
 	}
 	return nil

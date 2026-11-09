@@ -130,7 +130,7 @@ export default function DashboardDock() {
                             value: overview.classified,
                             unit: `/ ${overview.companies}`,
                             tone: overview.classified < overview.companies ? "accent" : undefined,
-                            hint: "Companies with at least one thematic category. Run the classify job on § 06 Categories.",
+                            hint: "Companies with at least one thematic category. Run the classify job on § 10 Categories.",
                         },
                         { label: "Jobs running", value: overview.runningJobs },
                     ]}

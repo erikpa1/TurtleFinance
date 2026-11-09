@@ -69,9 +69,15 @@ func normalize(c *Config) {
 	if c.ForecastFreq != "W" {
 		c.ForecastFreq = "M"
 	}
-	c.MaxComboSize = max(1, min(c.MaxComboSize, 4))
+	if c.MaxComboSize <= 0 {
+		c.MaxComboSize = d.MaxComboSize
+	}
+	c.MaxComboSize = min(c.MaxComboSize, 4)
 	if len(c.ComboModes) == 0 {
 		c.ComboModes = d.ComboModes
+	}
+	if c.ComboTopN <= 0 {
+		c.ComboTopN = d.ComboTopN
 	}
 	c.ComboTopN = max(2, min(c.ComboTopN, 25))
 	if c.MinTrades < 0 {
