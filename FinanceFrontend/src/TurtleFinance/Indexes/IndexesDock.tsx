@@ -1,6 +1,7 @@
 import React from "react";
 import { Button, Checkbox, Table, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { notifyJobProblem } from "@TurtleFinance/Report/notifyJobProblem";
 
 import DockLayout from "@TurtleFinance/Common/DockLayout";
 import JobProgress from "@TurtleFinance/Common/JobProgress";
@@ -29,7 +30,7 @@ export default function IndexesDock() {
 
     const job = useJobPoller(jobUid, (j) => {
         if (j.status === "done") message.success(`${j.name}: ${j.message}`);
-        else message.error(j.message || "Import failed");
+        else notifyJobProblem(j, "Import failed");
         refresh();
         if (openKey) loadConstituents(openKey);
     });

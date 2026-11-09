@@ -9,6 +9,7 @@ import {
     message,
 } from "antd";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 
 import CompaniesApi from "@TurtleFinance/Data/CompaniesApi";
 import Company, { SearchHit } from "@TurtleFinance/Data/Company";
@@ -31,6 +32,7 @@ export default function AddCompanyModal({
     const [sync, setSync] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const searchSeq = React.useRef(0);
+    const navigate = useNavigate();
 
     React.useEffect(() => {
         if (open) {
@@ -56,6 +58,57 @@ export default function AddCompanyModal({
         }, 350);
         return () => clearTimeout(timer);
     }, [ticker]);
+
+    const DB_SUFFIX = " · in database";
+    const inDb = hits.filter((h) => h.name.endsWith(DB_SUFFIX));
+    const fromProvider = hits.filter((h) => !h.name.endsWith(DB_SUFFIX));
+
+    const row = (h: SearchHit, name: string) => (
+        <Flex justify={"space-between"} gap={8}>
+            <span>
+                <b>{h.symbol}</b> {name}
+            </span>
+            <span className={"tf-mono"} style={{ fontSize: 11, color: "#86827a" }}>
+                {h.exchange}
+                {h.quoteType && ` · ${h.quoteType.toLowerCase()}`}
+            </span>
+        </Flex>
+    );
+
+    const groupedOptions = [
+        ...(inDb.length
+            ? [
+                  {
+                      label: "Already in your database – opens the company",
+                      options: inDb.map((h) => ({ value: `db:${h.symbol}`, label: row(h, h.name.slice(0, -DB_SUFFIX.length)) })),
+                  },
+              ]
+            : []),
+        ...(fromProvider.length
+            ? [
+                  {
+                      label: "From the market data provider – adds a new company",
+                      options: fromProvider.map((h) => ({ value: h.symbol, label: row(h, h.name) })),
+                  },
+              ]
+            : []),
+    ];
+
+    async function openOrPick(value: string) {
+        if (!value.startsWith("db:")) {
+            setTicker(value);
+            return;
+        }
+        const symbol = value.slice(3);
+        const all = await CompaniesApi.List();
+        const existing = all.find((c) => c.ticker === symbol);
+        if (existing) {
+            onClose();
+            navigate(`/companies/${existing.uid}`);
+        } else {
+            setTicker(symbol);
+        }
+    }
 
     async function submit() {
         const symbol = ticker.trim().toUpperCase();
@@ -96,21 +149,8 @@ export default function AddCompanyModal({
                 <AutoComplete
                     value={ticker}
                     onChange={(v) => setTicker(v)}
-                    onSelect={(v) => setTicker(v)}
-                    options={hits.map((h) => ({
-                        value: h.symbol,
-                        label: (
-                            <Flex justify={"space-between"} gap={8}>
-                                <span>
-                                    <b>{h.symbol}</b> {h.name}
-                                </span>
-                                <span className={"tf-mono"} style={{ fontSize: 11, color: "#86827a" }}>
-                                    {h.exchange}
-                                    {h.quoteType && ` · ${h.quoteType.toLowerCase()}`}
-                                </span>
-                            </Flex>
-                        ),
-                    }))}
+                    onSelect={(v: string) => openOrPick(v)}
+                    options={groupedOptions}
                     style={{ width: "100%" }}
                 >
                     <Input.Search

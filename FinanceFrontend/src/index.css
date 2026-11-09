@@ -90,3 +90,12 @@ h1, h2, h3, h4, h5,
 .tf-row-link:hover .tf-ticker { text-decoration: underline; }
 
 .no-border-tabs.ant-tabs-top > .ant-tabs-nav::before { border-bottom: none !important; }
+
+/* Printing: no navigation, full width; the tax draft prints alone. */
+@media print {
+    nav, .tf-no-print, header button { display: none !important; }
+    main { margin-left: 0 !important; }
+    body.tf-print-draft * { visibility: hidden; }
+    body.tf-print-draft .tf-print-area, body.tf-print-draft .tf-print-area * { visibility: visible; }
+    body.tf-print-draft .tf-print-area { position: absolute; left: 0; top: 0; width: 100%; max-width: none !important; border: none !important; }
+}

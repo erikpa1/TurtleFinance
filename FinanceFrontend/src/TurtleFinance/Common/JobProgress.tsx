@@ -1,5 +1,6 @@
 import Job from "@TurtleFinance/Data/Job";
 import { FONT_MONO, GAIN, INK, INK_SOFT, LOSS, RULE } from "@TurtleFinance/Report/ReportTokens";
+import { explainError } from "@TurtleFinance/Report/explainError";
 
 // JobProgress prints a job as one log line with a thin ink progress rule.
 export default function JobProgress({ job }: { job: Job | null }) {
@@ -23,6 +24,9 @@ export default function JobProgress({ job }: { job: Job | null }) {
             <div style={{ height: 2, background: RULE, marginTop: 4 }}>
                 <div style={{ height: 2, width: `${pct}%`, background: color }} />
             </div>
+            {job.status === "failed" && explainError(job.message).fix && (
+                <div style={{ fontSize: 12, color: INK_SOFT, marginTop: 3 }}>{explainError(job.message).fix}</div>
+            )}
             {job.errors?.length > 0 && (
                 <div style={{ fontFamily: FONT_MONO, fontSize: 11, color: LOSS, marginTop: 3 }}>
                     {job.errors.length} error{job.errors.length > 1 ? "s" : ""}, first: {job.errors[0]}

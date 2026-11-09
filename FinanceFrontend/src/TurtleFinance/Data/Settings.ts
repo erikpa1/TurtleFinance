@@ -11,6 +11,15 @@ export default class Settings {
     dataProvider = "yahoo";
     fmpApiKey = "";
 
+    // Offline-first data policy
+    offlineMode = false;
+    priceMaxAgeHours = 12;
+    fundamentalsMaxAgeHours = 168;
+    searchCacheDays = 30;
+    optionsCacheMinutes = 30;
+    dailyRequestBudget = 1500;
+    cooldownMinutes = 30;
+
     ToJson(): any {
         return { ...this };
     }

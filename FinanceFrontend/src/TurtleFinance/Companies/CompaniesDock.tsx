@@ -15,6 +15,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { notifyJobProblem } from "@TurtleFinance/Report/notifyJobProblem";
 
 import DockLayout from "@TurtleFinance/Common/DockLayout";
 import KeyFiguresStrip from "@TurtleFinance/Report/KeyFiguresStrip";
@@ -35,6 +36,7 @@ import { useJobPoller } from "@TurtleFinance/Hooks/useJobPoller";
 import AddCompanyModal from "@TurtleFinance/Companies/AddCompanyModal";
 import COUCompanyDrawer from "@TurtleFinance/Companies/COUCompanyDrawer";
 import BulkTagsModal from "@TurtleFinance/Companies/BulkTagsModal";
+import { useForecastMethods } from "@TurtleFinance/Forecast/ForecastConfig";
 
 // CompaniesDock is the company master list: search + filters, bulk actions
 // (sync / classify / tag), add-by-ticker and an edit drawer.
@@ -42,6 +44,7 @@ export default function CompaniesDock() {
     const [t] = useTranslation();
     const navigate = useNavigate();
     const { tags, categories, refreshLookups } = useFinanceLookups();
+    const forecastMethods = useForecastMethods();
 
     const [companies, setCompanies] = React.useState<Company[]>([]);
     const [loading, setLoading] = React.useState(false);
@@ -61,7 +64,7 @@ export default function CompaniesDock() {
 
     const job = useJobPoller(jobUid, (j) => {
         if (j.status === "done") message.success(`${j.name || j.type} ${t("finished")}`);
-        else message.error(`${j.name || j.type}: ${j.message || t("failed")}`);
+        else notifyJobProblem(j, `${j.name || j.type} failed`);
         refresh();
         refreshLookups();
     });
@@ -108,6 +111,12 @@ export default function CompaniesDock() {
         );
         setJobUid(j.uid);
         message.info("Ollama classification job queued – progress is shown above the table");
+    }
+
+    async function autoSelectModels(all: boolean) {
+        const j = await CompaniesApi.AutoSelectModelMany(all ? [] : selected);
+        setJobUid(j.uid);
+        message.info(`Backtesting every forecasting method on ${all ? companies.length : selected.length} companies to pick each one's model`);
     }
 
     const sectors = React.useMemo(
@@ -243,6 +252,22 @@ export default function CompaniesDock() {
             render: (_, r) => <PeValue value={r.fundamentals.trailingPE} />,
         },
         {
+            title: "Forecast model",
+            key: "model",
+            width: 170,
+            render: (_, r) => {
+                const k = r.effectiveMethod;
+                const name = forecastMethods.find((m) => m.key === k)?.name ?? k;
+                if (!k) return <Typography.Text type={"secondary"} style={{ fontSize: 11 }}>auto, not chosen yet</Typography.Text>;
+                return (
+                    <span title={r.forecast.mode === "manual" ? "set manually" : `auto-selected ${fmtDateTime(r.forecast.autoSelectedAt)}`}>
+                        <ClippedName max={150}>{name}</ClippedName>
+                        {r.forecast.mode === "manual" && <span style={{ fontSize: 10, color: "#86827a" }}> manual</span>}
+                    </span>
+                );
+            },
+        },
+        {
             title: t("Mkt cap"),
             key: "mcap",
             width: 120,
@@ -353,6 +378,17 @@ export default function CompaniesDock() {
                         }}
                     >
                         <Button>Classify with Ollama ▾</Button>
+                    </Dropdown>
+                    <Dropdown
+                        disabled={companies.length === 0}
+                        menu={{
+                            items: [
+                                { key: "m-sel", label: `Pick models for ${selected.length} selected`, disabled: !hasSelection, onClick: () => autoSelectModels(false) },
+                                { key: "m-all", label: `Pick models for all ${companies.length}`, onClick: () => autoSelectModels(true) },
+                            ],
+                        }}
+                    >
+                        <Button>Pick forecast models ▾</Button>
                     </Dropdown>
                     <Button disabled={!hasSelection} onClick={() => setBulkTagsOpen(true)}>
                         {hasSelection ? `Tag ${selected.length} selected` : "Tag selected"}
@@ -496,7 +532,7 @@ export default function CompaniesDock() {
                     preserveSelectedRowKeys: true,
                 }}
                 pagination={{ pageSize: 50, showSizeChanger: true }}
-                scroll={{ x: 1800 }}
+                scroll={{ x: 1980 }}
             />
             )}
 

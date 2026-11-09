@@ -4,6 +4,7 @@ import DockLayout from "@TurtleFinance/Common/DockLayout";
 import ValuationTable from "@TurtleFinance/Screener/ValuationTable";
 import GroupAggregates from "@TurtleFinance/Screener/GroupAggregates";
 import CorrelationPanel from "@TurtleFinance/Screener/CorrelationPanel";
+import SteadyGrowersTable from "@TurtleFinance/Screener/SteadyGrowersTable";
 
 // ScreenerDock – the P/E list, group medians and the correlation matrix.
 export default function ScreenerDock() {
@@ -16,6 +17,7 @@ export default function ScreenerDock() {
                 destroyOnHidden
                 items={[
                     { key: "valuation", label: "Valuation table", children: <ValuationTable /> },
+                    { key: "steady", label: "Steady growers", children: <SteadyGrowersTable /> },
                     { key: "groups", label: "Medians by group", children: <GroupAggregates /> },
                     { key: "correlation", label: "Correlation", children: <CorrelationPanel /> },
                 ]}

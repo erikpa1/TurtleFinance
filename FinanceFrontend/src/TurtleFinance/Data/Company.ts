@@ -90,6 +90,19 @@ export class Metrics {
     distFrom52wHigh = 0;
     avgVolume = 0;
 
+    // price movement (ideas #1)
+    avgRangePct = 0;
+    atr14Pct = 0;
+    avgGapPct = 0;
+    maxDailyMove1Y = 0;
+    upDaysPct1Y = 0;
+    trendR2 = 0;
+    trendCagr = 0;
+    positiveMonthsPct = 0;
+    ulcerIndex = 0;
+    longestDrawdownDays = 0;
+    steadinessScore = 0;
+
     ToJson(): any {
         return { ...this };
     }
@@ -102,6 +115,37 @@ export class Metrics {
             }
         });
     }
+}
+
+export interface AutoScore {
+    method: string;
+    mase: number;
+    directionalAccuracy: number;
+}
+
+// CompanyForecastConfig is the per-stock forecasting model (ideas #6).
+export interface CompanyForecastConfig {
+    mode: "auto" | "manual";
+    method: string;
+    frequency: "D" | "W" | "M";
+    seasonLength: number;
+    seriesType: "close" | "logClose";
+    autoMethod: string;
+    autoSelectedAt: string;
+    autoScores: AutoScore[];
+}
+
+export function defaultForecastConfig(): CompanyForecastConfig {
+    return {
+        mode: "auto",
+        method: "",
+        frequency: "M",
+        seasonLength: 12,
+        seriesType: "close",
+        autoMethod: "",
+        autoSelectedAt: "",
+        autoScores: [],
+    };
 }
 
 export default class Company {
@@ -128,6 +172,7 @@ export default class Company {
     lastPriceSync = "";
     lastFundamentalsSync = "";
     syncError = "";
+    forecast: CompanyForecastConfig = defaultForecastConfig();
 
     // Price prefers the live quote, falls back to the last stored close.
     get price(): number {
@@ -137,6 +182,12 @@ export default class Company {
     get dayChange(): number {
         if (this.fundamentals.changePct) return this.fundamentals.changePct;
         return this.metrics.ret1D;
+    }
+
+    // effectiveMethod is the method "auto" resolves to for this stock.
+    get effectiveMethod(): string {
+        if (this.forecast.mode === "manual" && this.forecast.method) return this.forecast.method;
+        return this.forecast.autoMethod;
     }
 
     get isClassified(): boolean {
@@ -168,6 +219,7 @@ export default class Company {
             lastPriceSync: this.lastPriceSync,
             lastFundamentalsSync: this.lastFundamentalsSync,
             syncError: this.syncError,
+            forecast: this.forecast,
         };
     }
 
@@ -197,6 +249,8 @@ export default class Company {
         this.lastPriceSync = jObj.lastPriceSync ?? "";
         this.lastFundamentalsSync = jObj.lastFundamentalsSync ?? "";
         this.syncError = jObj.syncError ?? "";
+        this.forecast = { ...defaultForecastConfig(), ...(jObj.forecast ?? {}) };
+        this.forecast.autoScores = this.forecast.autoScores ?? [];
     }
 
     static From(jObj: any): Company {

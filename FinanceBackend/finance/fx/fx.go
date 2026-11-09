@@ -16,6 +16,7 @@ import (
 
 	"turtle/db"
 	"turtle/finance/jobs"
+	"turtle/finance/market"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -238,25 +239,29 @@ func ParseEcbHistCsv(r io.Reader, wanted map[string]bool) ([]Rate, error) {
 	return out, nil
 }
 
-func fetchEcbApi(currency, from string) ([]Rate, error) {
-	resp, err := httpClient.Get(fmt.Sprintf(ECB_API, currency, from))
+func download(rawUrl string) ([]byte, error) {
+	resp, err := httpClient.Get(rawUrl)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ECB API HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("ECB HTTP %d", resp.StatusCode)
 	}
-	return ParseEcbCsv(resp.Body)
+	return io.ReadAll(io.LimitReader(resp.Body, 50<<20))
 }
 
-func fetchEcbZip(wanted map[string]bool) ([]Rate, error) {
-	resp, err := httpClient.Get(ECB_HIST_ZIP)
+func fetchEcbApi(currency, from string) ([]Rate, error) {
+	u := fmt.Sprintf(ECB_API, currency, from)
+	data, err := market.FetchCachedUrl("ecb", market.KIND_CHART, u, func() ([]byte, error) { return download(u) })
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20))
+	return ParseEcbCsv(bytes.NewReader(data))
+}
+
+func fetchEcbZip(wanted map[string]bool) ([]Rate, error) {
+	data, err := market.FetchCachedUrl("ecb", market.KIND_CHART, ECB_HIST_ZIP, func() ([]byte, error) { return download(ECB_HIST_ZIP) })
 	if err != nil {
 		return nil, err
 	}

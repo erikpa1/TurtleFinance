@@ -3,6 +3,7 @@ import { Button, Col, Dropdown, Flex, Popconfirm, Row, Space, Table, Typography,
 import type { ColumnsType } from "antd/es/table";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { notifyJobProblem } from "@TurtleFinance/Report/notifyJobProblem";
 
 import DockLayout from "@TurtleFinance/Common/DockLayout";
 import { Panel } from "@TurtleFinance/Common/StatCard";
@@ -45,7 +46,7 @@ export default function CategoriesDock() {
 
     const job = useJobPoller(jobUid, (j) => {
         if (j.status === "done") message.success(`Classification finished: ${j.message}`);
-        else message.error(j.message || "Classification failed");
+        else notifyJobProblem(j, "Classification failed");
         refresh();
     });
 

@@ -15,4 +15,13 @@ type Settings struct {
 	PriceHistoryYears int                `json:"priceHistoryYears" bson:"priceHistoryYears"`
 	DataProvider      string             `json:"dataProvider" bson:"dataProvider"`
 	FmpApiKey         string             `json:"fmpApiKey" bson:"fmpApiKey"`
+
+	// Offline-first data policy (keeps Yahoo traffic low).
+	OfflineMode             bool `json:"offlineMode" bson:"offlineMode"`
+	PriceMaxAgeHours        int  `json:"priceMaxAgeHours" bson:"priceMaxAgeHours"`               // skip price sync if synced more recently
+	FundamentalsMaxAgeHours int  `json:"fundamentalsMaxAgeHours" bson:"fundamentalsMaxAgeHours"` // fundamentals cache lifetime
+	SearchCacheDays         int  `json:"searchCacheDays" bson:"searchCacheDays"`
+	OptionsCacheMinutes     int  `json:"optionsCacheMinutes" bson:"optionsCacheMinutes"`
+	DailyRequestBudget      int  `json:"dailyRequestBudget" bson:"dailyRequestBudget"` // per provider, 0 = unlimited
+	CooldownMinutes         int  `json:"cooldownMinutes" bson:"cooldownMinutes"`       // pause after HTTP 429
 }

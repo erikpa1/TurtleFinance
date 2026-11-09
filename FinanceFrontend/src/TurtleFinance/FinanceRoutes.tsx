@@ -22,6 +22,10 @@ const ForecastLabDock = React.lazy(
 const CategoriesDock = React.lazy(
     () => import("@TurtleFinance/Categories/CategoriesDock"),
 );
+const FactorsDock = React.lazy(() => import("@TurtleFinance/Factors/FactorsDock"));
+const StrategiesDock = React.lazy(() => import("@TurtleFinance/Strategies/StrategiesDock"));
+const LedgerDock = React.lazy(() => import("@TurtleFinance/Ledger/LedgerDock"));
+const DataUsageDock = React.lazy(() => import("@TurtleFinance/Market/DataUsageDock"));
 const TagsDock = React.lazy(() => import("@TurtleFinance/Tags/TagsDock"));
 const AiDock = React.lazy(() => import("@TurtleFinance/Ai/AiDock"));
 const JobsDock = React.lazy(() => import("@TurtleFinance/Jobs/JobsDock"));
@@ -59,6 +63,10 @@ export default function FinanceRoutes() {
             path={"/categories"}
             element={<CategoriesDock />}
         />,
+        <Route key={"factors"} path={"/factors"} element={<FactorsDock />} />,
+        <Route key={"strategies"} path={"/strategies"} element={<StrategiesDock />} />,
+        <Route key={"ledger"} path={"/ledger"} element={<LedgerDock />} />,
+        <Route key={"data-usage"} path={"/data-usage"} element={<DataUsageDock />} />,
         <Route key={"tags"} path={"/tags"} element={<TagsDock />} />,
         <Route key={"ai"} path={"/ai"} element={<AiDock />} />,
         <Route key={"jobs"} path={"/jobs"} element={<JobsDock />} />,

@@ -41,7 +41,8 @@ func NewYahooProvider(userAgent string) *YahooProvider {
 
 func (self *YahooProvider) Name() string { return PROVIDER_YAHOO }
 
-func (self *YahooProvider) get(rawUrl string) ([]byte, error) {
+// httpGet performs one raw request (no cache, no retry).
+func (self *YahooProvider) httpGet(rawUrl string) ([]byte, error) {
 	self.pace.wait()
 
 	req, err := http.NewRequest(http.MethodGet, rawUrl, nil)
@@ -55,24 +56,19 @@ func (self *YahooProvider) get(rawUrl string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	body, err := readBody(resp)
-
-	// A single polite retry after a pause; never hammer the endpoint.
-	if errors.Is(err, ErrRateLimited) {
-		time.Sleep(3 * time.Second)
-
-		resp, err2 := self.client.Do(req)
-		if err2 != nil {
-			return nil, err2
-		}
-		return readBody(resp)
-	}
-
-	return body, err
+	return readBody(resp)
 }
 
-// ensureCrumb obtains the session cookie and crumb (cached until rejected).
+// get goes through the shared cache/budget/cooldown gate. A 429 is never
+// retried: it starts a provider-wide cooldown instead.
+func (self *YahooProvider) get(kind string, rawUrl string) ([]byte, error) {
+	return cachedFetch(PROVIDER_YAHOO, kind, rawUrl, func() ([]byte, error) {
+		return self.httpGet(rawUrl)
+	})
+}
+
+// ensureCrumb obtains the session cookie and crumb (cached in memory until rejected).
+// It is only called on a cache miss, right before a real request.
 func (self *YahooProvider) ensureCrumb(force bool) (string, error) {
 	self.crumbMu.Lock()
 	defer self.crumbMu.Unlock()
@@ -82,9 +78,9 @@ func (self *YahooProvider) ensureCrumb(force bool) (string, error) {
 	}
 
 	// fc.yahoo.com answers 404 but sets the session cookie.
-	_, _ = self.get("https://fc.yahoo.com")
+	_, _ = self.httpGet("https://fc.yahoo.com")
 
-	body, err := self.get(yahooBase + "/v1/test/getcrumb")
+	body, err := self.httpGet(yahooBase + "/v1/test/getcrumb")
 	if err != nil {
 		return "", fmt.Errorf("yahoo crumb: %w", err)
 	}
@@ -98,23 +94,30 @@ func (self *YahooProvider) ensureCrumb(force bool) (string, error) {
 	return crumb, nil
 }
 
-func (self *YahooProvider) getWithCrumb(path string, params url.Values) ([]byte, error) {
-	for attempt := 0; attempt < 2; attempt++ {
-		crumb, err := self.ensureCrumb(attempt > 0)
-		if err != nil {
-			return nil, err
+// getWithCrumb caches by the URL without the crumb; the crumb handshake
+// happens only when the cache cannot answer.
+func (self *YahooProvider) getWithCrumb(kind string, path string, params url.Values) ([]byte, error) {
+	keyUrl := yahooBase + path + "?" + params.Encode()
+
+	return cachedFetch(PROVIDER_YAHOO_SESSION, kind, keyUrl, func() ([]byte, error) {
+		for attempt := 0; attempt < 2; attempt++ {
+			crumb, err := self.ensureCrumb(attempt > 0)
+			if err != nil {
+				return nil, err
+			}
+			q := url.Values{}
+			for k, v := range params {
+				q[k] = v
+			}
+			q.Set("crumb", crumb)
+			body, err := self.httpGet(yahooBase + path + "?" + q.Encode())
+			if err != nil && strings.Contains(err.Error(), "HTTP 401") {
+				continue
+			}
+			return body, err
 		}
-
-		params.Set("crumb", crumb)
-		body, err := self.get(yahooBase + path + "?" + params.Encode())
-
-		if err != nil && strings.Contains(err.Error(), "HTTP 401") {
-			continue
-		}
-		return body, err
-	}
-
-	return nil, errors.New("yahoo: unauthorized (crumb rejected)")
+		return nil, errors.New("yahoo: unauthorized (crumb rejected)")
+	})
 }
 
 func (self *YahooProvider) Search(query string) ([]SearchHit, error) {
@@ -123,7 +126,7 @@ func (self *YahooProvider) Search(query string) ([]SearchHit, error) {
 	params.Set("quotesCount", "15")
 	params.Set("newsCount", "0")
 
-	body, err := self.get(yahooBase + "/v1/finance/search?" + params.Encode())
+	body, err := self.get(KIND_SEARCH, yahooBase+"/v1/finance/search?"+params.Encode())
 	if err != nil {
 		return nil, err
 	}
@@ -161,13 +164,15 @@ func (self *YahooProvider) Search(query string) ([]SearchHit, error) {
 
 func (self *YahooProvider) History(ticker string, from time.Time) (*History, error) {
 	params := url.Values{}
-	params.Set("period1", fmt.Sprintf("%d", from.Unix()))
-	params.Set("period2", fmt.Sprintf("%d", time.Now().Add(24*time.Hour).Unix()))
+	// Day-rounded bounds keep the cache key stable for the whole day.
+	day := func(t time.Time) int64 { return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC).Unix() }
+	params.Set("period1", fmt.Sprintf("%d", day(from)))
+	params.Set("period2", fmt.Sprintf("%d", day(time.Now().Add(48*time.Hour))))
 	params.Set("interval", "1d")
 	params.Set("events", "div,split")
 	params.Set("includeAdjustedClose", "true")
 
-	body, err := self.get(yahooBase + "/v8/finance/chart/" + url.PathEscape(ticker) + "?" + params.Encode())
+	body, err := self.get(KIND_CHART, yahooBase+"/v8/finance/chart/"+url.PathEscape(ticker)+"?"+params.Encode())
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +268,7 @@ func (self *YahooProvider) Snapshot(ticker string) (*Profile, *Fundamentals, err
 	params := url.Values{}
 	params.Set("modules", "assetProfile,price,summaryDetail,defaultKeyStatistics,financialData")
 
-	body, err := self.getWithCrumb("/v10/finance/quoteSummary/"+url.PathEscape(ticker), params)
+	body, err := self.getWithCrumb(KIND_FUNDAMENTALS, "/v10/finance/quoteSummary/"+url.PathEscape(ticker), params)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -355,7 +360,7 @@ func (self *YahooProvider) Options(ticker string, expiration string) (*RawOption
 		params.Set("date", fmt.Sprintf("%d", t.Unix()))
 	}
 
-	body, err := self.getWithCrumb("/v7/finance/options/"+url.PathEscape(ticker), params)
+	body, err := self.getWithCrumb(KIND_OPTIONS, "/v7/finance/options/"+url.PathEscape(ticker), params)
 	if err != nil {
 		return nil, err
 	}

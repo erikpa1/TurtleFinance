@@ -9,12 +9,14 @@ import (
 	"turtle/finance/analytics"
 	"turtle/finance/categories"
 	"turtle/finance/companies"
+	"turtle/finance/experiments"
 	"turtle/finance/factors"
 	"turtle/finance/forecasting"
 	"turtle/finance/fx"
 	"turtle/finance/indexes"
 	"turtle/finance/jobs"
 	"turtle/finance/ledger"
+	"turtle/finance/market"
 	"turtle/finance/options"
 	"turtle/finance/prices"
 	"turtle/finance/settings"
@@ -36,7 +38,9 @@ func InitFinanceApi(r *gin.Engine) {
 	jobs.MarkInterrupted()
 	categories.EnsureDefaults(primitive.NilObjectID, false)
 
+	settings.LoadPolicy()
 	settings.InitSettingsApi(r)
+	market.InitMarketApi(r)
 	jobs.InitJobsApi(r)
 	tags.InitTagsApi(r)
 	categories.InitCategoriesApi(r)
@@ -48,6 +52,7 @@ func InitFinanceApi(r *gin.Engine) {
 	ai.InitAiApi(r)
 	factors.InitFactorsApi(r)
 	strategies.InitStrategiesApi(r)
+	experiments.InitExperimentsApi(r)
 	fx.InitFxApi(r)
 	ledger.InitLedgerApi(r)
 	tax.InitTaxApi(r)

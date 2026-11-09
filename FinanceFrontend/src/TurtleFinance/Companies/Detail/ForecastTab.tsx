@@ -9,6 +9,7 @@ import ReportEmptyState from "@TurtleFinance/Report/ReportEmptyState";
 import ReportErrorNote from "@TurtleFinance/Report/ReportErrorNote";
 import SourceFootnote from "@TurtleFinance/Report/SourceFootnote";
 import { ChartSkeleton } from "@TurtleFinance/Report/ReportSkeletons";
+import StockModelSection from "@TurtleFinance/Forecast/StockModelSection";
 import { ACCENT, INK, LOSS } from "@TurtleFinance/Report/ReportTokens";
 import Company from "@TurtleFinance/Data/Company";
 import ForecastApi from "@TurtleFinance/Data/ForecastApi";
@@ -160,6 +161,7 @@ export default function ForecastTab({ company }: { company: Company }) {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+            <StockModelSection company={company} />
             <RuledSection
                 strong
                 label={"Set-up"}

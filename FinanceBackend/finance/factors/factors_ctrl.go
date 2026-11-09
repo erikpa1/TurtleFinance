@@ -2,9 +2,12 @@ package factors
 
 import (
 	"errors"
+	"fmt"
+
 	"io"
 	"strings"
 	"time"
+	"turtle/finance/market"
 
 	"turtle/core/users"
 	"turtle/db"
@@ -102,6 +105,9 @@ func SyncFactor(org primitive.ObjectID, f *Factor) error {
 		return errors.New("factor has no ticker – import its prices as CSV")
 	}
 	s := settings.GetForOrg(org)
+	if f.LastPriceSync != nil && time.Since(*f.LastPriceSync) < time.Duration(s.PriceMaxAgeHours)*time.Hour {
+		return nil // fresh enough – no request
+	}
 	_, _, err := prices.SyncHistory(settings.Provider(org), org, f.Uid, f.Ticker, s.PriceHistoryYears, f.LastPriceSync == nil)
 
 	msg := ""
@@ -118,7 +124,11 @@ func StartSyncJob(user *users.User) *jobs.Job {
 	return jobs.Start(org, "factor_sync", "Sync oil / gas / market factors", func(ctx *jobs.Ctx) (any, error) {
 		ctx.SetTotal(len(list))
 		for i := range list {
-			ctx.Step(list[i].Name, SyncFactor(org, &list[i]))
+			err := SyncFactor(org, &list[i])
+			ctx.Step(list[i].Name, err)
+			if market.IsQuotaError(err) {
+				return nil, fmt.Errorf("stopped: %s", err.Error())
+			}
 		}
 		return bson.M{"factors": len(list)}, nil
 	})

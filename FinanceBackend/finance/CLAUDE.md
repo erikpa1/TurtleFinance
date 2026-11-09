@@ -262,3 +262,40 @@ POST `/tax/report` (form `data` = `{year, profileKey | profile (edited copy), ac
 `{year, profile, sales: [{date,account,ticker,quantity,currency,price,sellRate,sellRateDate,proceedsEur,costEur,gainEur,exemptEur,taxableEur,minHoldDays,lots:[{buyDate,quantity,costEur,buyRate}]}], dividends: [{date,account,ticker,country,currency,gross,withheld,rate,grossEur,withheldEur}], summary: {salesCount,proceedsEur,costEur,exemptGainEur,taxableGainsEur,taxableLossesEur,netTaxableEur,annualExemptUsed,taxBaseEur,capitalGainsTax,healthInsurance,dividendsGrossEur,dividendsWithheldEur,dividendTax,dividendCredit,dividendTaxDue,feesEur,totalDue}, fxRates: [{currency,date,rate}], warnings: [], draft: "markdown"}`
 POST `/tax/report/csv` and `/tax/report/markdown` (same body) → file download.
 Paper accounts are excluded unless `includePaper` or selected explicitly. All rates are profile values to be verified by the user – the UI must show `profile.notes`.
+
+### Offline-first data policy (keep Yahoo traffic low)
+Every upstream call (Yahoo, FMP, ECB, GitHub S&P list) goes through `market/cache.go → cachedFetch`:
+fresh cache entry → no request · offline mode / cooldown / daily budget → stale cache served if present, else a quota error · HTTP 429 → provider cooldown (no retries).
+Cache TTLs: search `searchCacheDays` (30), fundamentals `fundamentalsMaxAgeHours` (168), options `optionsCacheMinutes` (30), chart 6 h, lists 7 d. Crumb-protected Yahoo endpoints (fundamentals, options) are their own provider `yahoo-session` with a separate cooldown, so a crumb 429 never blocks price downloads.
+Price sync skips companies/factors synced within `priceMaxAgeHours` (12) unless forced (single-company Sync button); downloads are incremental (last week + new days); a full re-download happens only when overlapping bars show changed adjusted/raw closes (dividend or split upstream). Bulk jobs stop on the first quota error (`market.IsQuotaError`) instead of hammering the provider; index import keeps creating companies and only pauses downloads. Search returns database matches first and only those when the provider is unavailable.
+Settings additions: `offlineMode, priceMaxAgeHours, fundamentalsMaxAgeHours, searchCacheDays, optionsCacheMinutes, dailyRequestBudget (per provider, 0 = unlimited), cooldownMinutes`.
+GET `/market/usage` → `{offline, dailyBudget, providers: [{provider: "yahoo"|"yahoo-session"|"fmp"|"ecb"|"github", cooldownUntil?, lastError?, today: {date, requests, cacheHits, staleServed, rateLimited, blocked, errors}}], history: Usage[] (14 days), cache: [{kind, entries, oldest, newest}]}`
+POST `/market/cache/clear` (form `kind` optional: search|fundamentals|chart|options|list) → usage · POST `/market/cooldown/clear` (form `provider` optional = all Yahoo) → usage
+Backup of everything (prices, cache, ledger): `make backup` / `make restore` (mongodump/mongorestore).
+
+### Experiments – brute-force strategy search with honest train/test split
+Package `experiments/` (persistence + job) on top of `strategies/search.go` (engine). Collection `finance_experiments`.
+Per stock: positions of every candidate are computed once (causal), evaluated on the **training** slice (first `trainRatio` of the period) to choose, then the chosen strategy is traded on the **untouched test slice** with fresh capital → `finalMoney`. Candidates = every family's parameter grid (+ one forecast-driven candidate per forecasting method) + combinations of the best `comboTopN` singles of size 2..`maxComboSize` with modes `and` (all long), `or` (any long), `vote` (majority, odd sizes). Selection ranks by `objective` on training only; candidates with fewer than `minTrades` training trades are not eligible (buy & hold always is). Capital is split equally across stocks; a stock that fails keeps its share as cash.
+```jsonc
+Config { "trainRatio":0.7, "years":10, "initialCapital":10000, "allocation":"equal", "feeBps":5, "feeFixed":1, "slippageBps":5,
+  "cashRate":null, "objective":"sharpe"|"final"|"calmar"|"sortino",
+  "families":["buy_hold","sma_cross","momentum","rsi_reversion","bollinger","donchian","seasonal","forecast"],
+  "forecastMethods":["holt_damped","hw_additive","hw_multiplicative","hw_damped","theta","drift"], "forecastFreq":"M"|"W",
+  "maxComboSize":2 /*1..4*/, "comboModes":["and","or","vote"], "comboTopN":12 /*2..25*/, "minTrades":3, "factorUid":"" /*adds factor_lead*/ }
+Experiment { uid, name, notes, companyUids[], tickers[], config, status: queued|running|done|failed, jobUid, error, createdAt, finishedAt, result }
+Result { summary: { initialCapital, finalMoney, finalBuyHold, profit, returnPct, buyHoldReturnPct, testCagr, testMaxDrawdown, testSharpe,
+           testStart, testEnd, stocksBeatingBuyHold, candidatesTested, trainReturnAvg, durationSec },
+  stocks: [{ companyUid, ticker, name, error?, trainStart, splitDate, testEnd, capital, candidatesTested,
+     best: CandidateScore, train: Performance, test: Performance, testBuyHold: Performance, finalMoney, finalBuyHold,
+     leaderboard: CandidateScore[20] /*by training objective*/, bestPerFamily: CandidateScore[],
+     forecastRanking: [{method,name,mase,directionalAccuracy}] /*training slice, monthly*/,
+     testEquity: Point[], testBenchEquity: Point[], testTrades: Trade[] }],
+  portfolioEquity: Point[], portfolioBench: Point[] /*test period, all stocks summed*/,
+  familyWins: [{family,wins}], forecastWins: [{family /*method key*/,wins}] }
+CandidateScore { label, kind: single|combo, family /*"combo" when mixed*/, mode, components[], trainObjective, trainReturn, trainSharpe, trainTrades,
+  testReturn, testSharpe, testMaxDrawdown, testTrades, testFinal }
+```
+GET `/experiments/options` → `{families: StrategyInfo[], forecastMethods: string[], objectives, comboModes, defaults: Config}`
+GET `/experiments` (list, without per-stock detail and curves) · GET `/experiment?uid=` (full)
+POST `/experiment` (form `data` = `{name?, notes?, companyUids: [hex…], config}`) → Experiment (job started; poll `jobUid` or the experiment)
+POST `/experiment/rerun?uid=` · POST `/experiment/update?uid=` (form `name`, `notes`) · DELETE `/experiment?uid=`

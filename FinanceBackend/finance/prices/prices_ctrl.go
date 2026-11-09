@@ -2,6 +2,8 @@ package prices
 
 import (
 	"context"
+	"math"
+
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"turtle/core/lgr"
 
 	"turtle/db"
 	"turtle/finance/market"
@@ -109,17 +112,26 @@ func DeleteForCompany(org primitive.ObjectID, companyUid primitive.ObjectID) {
 }
 
 // SyncHistory downloads missing history from the provider and stores it.
-// When full is true (or nothing is stored yet) the whole configured history is
-// re-downloaded, which also refreshes adjusted closes after dividends/splits.
+// Incremental by default: only the last stored week + new days are fetched.
+// A full re-download (one extra request) happens only when the overlapping
+// bars show changed adjusted closes – i.e. a dividend or split was applied
+// upstream – or when nothing is stored yet.
 func SyncHistory(provider market.Provider, org primitive.ObjectID, companyUid primitive.ObjectID, ticker string, years int, full bool) (int64, *market.Profile, error) {
-	from := time.Now().AddDate(-years, 0, 0)
+	fullFrom := time.Now().AddDate(-years, 0, 0)
+	from := fullFrom
 
+	stored := map[string]market.Bar{}
 	if !full {
 		if last := LastDate(org, companyUid); last != "" {
 			t, err := time.Parse("2006-01-02", last)
 			if err == nil {
 				from = t.AddDate(0, 0, -7)
+				for _, b := range LoadBars(org, companyUid, from.Format("2006-01-02"), "") {
+					stored[b.Date] = b
+				}
 			}
+		} else {
+			full = true
 		}
 	}
 
@@ -127,9 +139,15 @@ func SyncHistory(provider market.Provider, org primitive.ObjectID, companyUid pr
 	if err != nil {
 		return 0, nil, err
 	}
-
 	if len(history.Bars) == 0 {
 		return 0, history.Meta, fmt.Errorf("no price data returned for %s", ticker)
+	}
+
+	if !full && AdjustmentChanged(stored, history.Bars) {
+		lgr.Info("%s: adjusted history changed upstream (dividend/split) – full re-download", ticker)
+		if fullHistory, err := provider.History(ticker, fullFrom); err == nil && len(fullHistory.Bars) > 0 {
+			history = fullHistory
+		}
 	}
 
 	n, err := StoreBars(org, companyUid, history.Bars)
@@ -140,6 +158,22 @@ func SyncHistory(provider market.Provider, org primitive.ObjectID, companyUid pr
 	StoreDividends(org, companyUid, history.Dividends)
 
 	return n, history.Meta, nil
+}
+
+// AdjustmentChanged compares overlapping bars: a relative change of the
+// adjusted (or raw, for splits) close above 0.1 % means older stored bars
+// are no longer consistent with the provider's adjustment.
+func AdjustmentChanged(stored map[string]market.Bar, fresh []market.Bar) bool {
+	for _, b := range fresh {
+		old, ok := stored[b.Date]
+		if !ok || old.AdjClose <= 0 || b.AdjClose <= 0 || old.Close <= 0 || b.Close <= 0 {
+			continue
+		}
+		if math.Abs(b.AdjClose/old.AdjClose-1) > 0.001 || math.Abs(b.Close/old.Close-1) > 0.001 {
+			return true
+		}
+	}
+	return false
 }
 
 // ImportCsv parses Yahoo-style CSV (Date,Open,High,Low,Close,Adj Close,Volume).

@@ -3,6 +3,7 @@ package companies
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -22,9 +23,6 @@ import (
 )
 
 const CT_COMPANIES = "finance_companies"
-
-// Full re-download cadence (refreshes adjusted closes after dividends/splits).
-const FULL_SYNC_EVERY = 30 * 24 * time.Hour
 
 func EnsureIndexes() {
 	db.EnsureIndex(CT_COMPANIES, bson.D{{Key: "org", Value: 1}, {Key: "ticker", Value: 1}}, true)
@@ -132,11 +130,40 @@ func DeleteCompany(user *users.User, uid primitive.ObjectID) {
 	db.DeleteEntity(CT_COMPANIES, user.FillOrgQuery(bson.M{"_id": uid}))
 }
 
+// Search returns companies already in the database first, then provider
+// hits (cached for SearchCacheDays). When the provider is unavailable
+// (offline, cooldown, budget) the local hits are returned without error.
 func Search(org primitive.ObjectID, q string) ([]market.SearchHit, error) {
-	if strings.TrimSpace(q) == "" {
+	q = strings.TrimSpace(q)
+	if q == "" {
 		return []market.SearchHit{}, nil
 	}
-	return settings.Provider(org).Search(q)
+
+	pattern := primitive.Regex{Pattern: "^" + regexp.QuoteMeta(q), Options: "i"}
+	nameRx := primitive.Regex{Pattern: regexp.QuoteMeta(q), Options: "i"}
+	local := db.QueryEntitiesAsCopy[Company](CT_COMPANIES, bson.M{"org": org, "$or": []bson.M{{"ticker": pattern}, {"name": nameRx}}},
+		options.Find().SetLimit(10).SetProjection(bson.M{"ticker": 1, "name": 1, "exchange": 1, "quoteType": 1, "sector": 1, "industry": 1}))
+
+	hits := []market.SearchHit{}
+	seen := map[string]bool{}
+	for _, c := range local {
+		seen[c.Ticker] = true
+		hits = append(hits, market.SearchHit{Symbol: c.Ticker, Name: c.Name + " · in database", Exchange: c.Exchange, QuoteType: c.QuoteType, Sector: c.Sector, Industry: c.Industry})
+	}
+
+	remote, err := settings.Provider(org).Search(q)
+	if err != nil {
+		if len(hits) > 0 || market.IsQuotaError(err) {
+			return hits, nil
+		}
+		return nil, err
+	}
+	for _, h := range remote {
+		if !seen[h.Symbol] {
+			hits = append(hits, h)
+		}
+	}
+	return hits, nil
 }
 
 // AddCompany creates a company from a ticker, filling profile + fundamentals
@@ -254,17 +281,33 @@ func RecomputeMetrics(org primitive.ObjectID, c *Company) {
 }
 
 // SyncCompany = prices (incremental or full) + fundamentals + metrics.
+// SyncCompany refreshes prices (unless synced within PriceMaxAgeHours and
+// not forced), fundamentals (cached for FundamentalsMaxAgeHours) and metrics.
+// Returns market.IsQuotaError-type errors unchanged so jobs can stop early.
 func SyncCompany(org primitive.ObjectID, c *Company, forceFundamentals bool) error {
+	return syncCompany(org, c, forceFundamentals, forceFundamentals)
+}
+
+func syncCompany(org primitive.ObjectID, c *Company, forcePrices bool, forceFundamentals bool) error {
 	s := settings.GetForOrg(org)
 	provider := settings.Provider(org)
-
-	full := c.LastFullPriceSync == nil || time.Since(*c.LastFullPriceSync) > FULL_SYNC_EVERY
 	errs := []string{}
-
-	_, meta, err := prices.SyncHistory(provider, org, c.Uid, c.Ticker, s.PriceHistoryYears, full)
+	var quotaErr error
 	now := time.Now()
-
 	update := bson.M{}
+
+	fresh := c.LastPriceSync != nil && time.Since(*c.LastPriceSync) < time.Duration(s.PriceMaxAgeHours)*time.Hour
+	if fresh && !forcePrices {
+		RecomputeMetrics(org, c)
+		return nil
+	}
+
+	full := c.LastFullPriceSync == nil
+	_, meta, err := prices.SyncHistory(provider, org, c.Uid, c.Ticker, s.PriceHistoryYears, full)
+	if market.IsQuotaError(err) {
+		quotaErr = err
+	}
+
 	if meta != nil {
 		fillMissingProfile(c, meta)
 		update["name"], update["exchange"], update["currency"], update["quoteType"] = c.Name, c.Exchange, c.Currency, c.QuoteType
@@ -280,9 +323,13 @@ func SyncCompany(org primitive.ObjectID, c *Company, forceFundamentals bool) err
 		}
 	}
 
-	// Fundamentals are heavier; refresh at most every 12 hours.
-	if forceFundamentals || c.LastFundamentalsSync == nil || time.Since(*c.LastFundamentalsSync) > 12*time.Hour {
+	// Fundamentals change quarterly; the response cache keeps them for
+	// FundamentalsMaxAgeHours, so this rarely reaches the network.
+	stale := c.LastFundamentalsSync == nil || time.Since(*c.LastFundamentalsSync) > time.Duration(s.FundamentalsMaxAgeHours)*time.Hour
+	if quotaErr == nil && (forceFundamentals || stale) {
 		if err := SyncFundamentals(org, c); err != nil {
+			// A paused fundamentals endpoint (yahoo-session) must not stop
+			// price downloads: record it on the company and carry on.
 			errs = append(errs, "fundamentals: "+err.Error())
 			// Search works without a session – at least get sector/industry.
 			if c.Sector == "" && FillFromSearch(org, c) {
@@ -297,6 +344,9 @@ func SyncCompany(org primitive.ObjectID, c *Company, forceFundamentals bool) err
 	update["syncError"] = c.SyncError
 	db.SetByOrgAndId(CT_COMPANIES, c.Uid, org, update)
 
+	if quotaErr != nil {
+		return quotaErr
+	}
 	if c.SyncError != "" {
 		lgr.Error("sync %s: %s", c.Ticker, c.SyncError)
 		return errors.New(c.SyncError)
@@ -315,16 +365,23 @@ func StartSyncJob(org primitive.ObjectID, uids []primitive.ObjectID, name string
 		list := ListForOrg(org, query)
 		ctx.SetTotal(len(list))
 
-		failed := 0
+		failed, skipped := 0, 0
 		for i := range list {
-			err := SyncCompany(org, &list[i], forceFundamentals)
+			err := syncCompany(org, &list[i], forceFundamentals, forceFundamentals)
 			if err != nil {
 				failed++
 			}
 			ctx.Step(list[i].Ticker, err)
+
+			// Offline / cooldown / budget: stop instead of hammering the provider.
+			if market.IsQuotaError(err) {
+				skipped = len(list) - i - 1
+				return bson.M{"synced": i + 1 - failed, "failed": failed, "skipped": skipped},
+					fmt.Errorf("stopped after %d of %d companies: %s", i+1, len(list), err.Error())
+			}
 		}
 
-		return bson.M{"synced": len(list) - failed, "failed": failed}, nil
+		return bson.M{"synced": len(list) - failed, "failed": failed, "skipped": skipped}, nil
 	})
 }
 

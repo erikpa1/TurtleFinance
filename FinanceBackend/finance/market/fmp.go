@@ -31,20 +31,32 @@ func NewFmpProvider(apiKey string) *FmpProvider {
 
 func (self *FmpProvider) Name() string { return PROVIDER_FMP }
 
+func fmpKind(path string) string {
+	switch path {
+	case "/search-symbol":
+		return KIND_SEARCH
+	case "/historical-price-eod/full", "/dividends":
+		return KIND_CHART
+	}
+	return KIND_FUNDAMENTALS
+}
+
 func (self *FmpProvider) get(path string, params url.Values) (gjson.Result, error) {
 	if self.apiKey == "" {
 		return gjson.Result{}, errors.New("FMP API key is not configured (Settings → Market data)")
 	}
 
-	fmpPace.wait()
-
 	params.Set("apikey", self.apiKey)
-	resp, err := self.client.Get(fmpBase + path + "?" + params.Encode())
-	if err != nil {
-		return gjson.Result{}, err
-	}
+	rawUrl := fmpBase + path + "?" + params.Encode()
 
-	body, err := readBody(resp)
+	body, err := cachedFetch(PROVIDER_FMP, fmpKind(path), rawUrl, func() ([]byte, error) {
+		fmpPace.wait()
+		resp, err := self.client.Get(rawUrl)
+		if err != nil {
+			return nil, err
+		}
+		return readBody(resp)
+	})
 	if err != nil {
 		return gjson.Result{}, err
 	}

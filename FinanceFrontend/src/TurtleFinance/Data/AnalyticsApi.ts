@@ -6,6 +6,7 @@ import {
     GroupBy,
     Overview,
 } from "@TurtleFinance/Data/Types";
+import { MovementResult } from "@TurtleFinance/Data/MovementTypes";
 
 const BASE = "/api/finance";
 
@@ -27,5 +28,9 @@ export default class AnalyticsApi {
 
     static async Recompute(): Promise<Job> {
         return Job.From((await turxios.post(`${BASE}/analytics/recompute`)).data);
+    }
+
+    static async Movement(uid: string): Promise<MovementResult> {
+        return await GetJson<MovementResult>(`${BASE}/analytics/movement`, { uid });
     }
 }

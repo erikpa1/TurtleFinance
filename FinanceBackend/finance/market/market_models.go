@@ -140,4 +140,7 @@ type Config struct {
 const (
 	PROVIDER_YAHOO = "yahoo"
 	PROVIDER_FMP   = "fmp"
+	// Crumb-protected Yahoo endpoints (fundamentals, options) are rate-limited
+	// separately from chart/search, so they get their own cooldown + counters.
+	PROVIDER_YAHOO_SESSION = "yahoo-session"
 )

@@ -1,13 +1,17 @@
 package indexes
 
 import (
+	"bytes"
 	"encoding/csv"
+	"io"
+
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+	"turtle/finance/market"
 
 	"turtle/core/lgr"
 	"turtle/core/users"
@@ -83,18 +87,23 @@ func loadSp500() ([]Constituent, error) {
 		return sp500Cache, nil
 	}
 
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Get(SP500_CSV)
+	body, err := market.FetchCachedUrl("github", market.KIND_LIST, SP500_CSV, func() ([]byte, error) {
+		client := &http.Client{Timeout: 20 * time.Second}
+		resp, err := client.Get(SP500_CSV)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("S&P 500 list: HTTP %d", resp.StatusCode)
+		}
+		return io.ReadAll(resp.Body)
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("S&P 500 list: HTTP %d", resp.StatusCode)
-	}
-
-	rows, err := csv.NewReader(resp.Body).ReadAll()
+	rows, err := csv.NewReader(bytes.NewReader(body)).ReadAll()
 	if err != nil {
 		return nil, err
 	}
@@ -238,6 +247,7 @@ func StartImport(user *users.User, key string, subset []string, syncPrices bool)
 		ctx.SetTotal(len(list))
 
 		created, synced := 0, 0
+		quotaHit := false
 		for _, item := range list {
 			c := item
 			existedBefore := companies.GetByTicker(org, c.Ticker) != nil
@@ -264,11 +274,16 @@ func StartImport(user *users.User, key string, subset []string, syncPrices bool)
 				created++
 			}
 
-			if err == nil && syncPrices {
+			if err == nil && syncPrices && !quotaHit {
 				if syncErr := companies.SyncCompany(org, company, false); syncErr == nil {
 					synced++
 				} else {
 					err = syncErr
+					if market.IsQuotaError(syncErr) {
+						// keep importing the list (local work), stop the downloads
+						quotaHit = true
+						ctx.SetMessage("Price downloads paused: %s", syncErr.Error())
+					}
 				}
 			}
 
@@ -276,7 +291,11 @@ func StartImport(user *users.User, key string, subset []string, syncPrices bool)
 		}
 
 		lgr.Ok("Imported %s: %d new companies", info.Name, created)
-		return bson.M{"created": created, "synced": synced, "total": len(list)}, nil
+		result := bson.M{"created": created, "synced": synced, "total": len(list)}
+		if quotaHit {
+			return result, fmt.Errorf("imported %d companies; prices synced for %d before the data provider paused – run 'Sync' later, already synced stocks are skipped", len(list), synced)
+		}
+		return result, nil
 	}), nil
 }
 

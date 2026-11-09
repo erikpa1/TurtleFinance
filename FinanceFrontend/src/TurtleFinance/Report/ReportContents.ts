@@ -13,12 +13,16 @@ export const CONTENTS: ContentsEntry[] = [
     { no: "02", label: "Companies", link: "/companies" },
     { no: "03", label: "P/E screener", link: "/screener" },
     { no: "04", label: "Index import", link: "/indexes" },
-    { no: "05", label: "Forecast lab", link: "/forecast-lab" },
-    { no: "06", label: "Categories", link: "/categories" },
-    { no: "07", label: "Tags", link: "/tags" },
-    { no: "08", label: "Ollama desk", link: "/ai" },
+    { no: "05", label: "Oil & gas", link: "/factors" },
+    { no: "06", label: "Forecast lab", link: "/forecast-lab" },
+    { no: "07", label: "Strategies", link: "/strategies" },
+    { no: "08", label: "Ledger & tax", link: "/ledger" },
+    { no: "09", label: "Categories", link: "/categories" },
+    { no: "10", label: "Tags", link: "/tags" },
+    { no: "11", label: "Ollama desk", link: "/ai" },
     { no: "A", label: "Job log", link: "/jobs", back: true },
     { no: "B", label: "Settings", link: "/settings", back: true },
+    { no: "C", label: "Data usage", link: "/data-usage", back: true },
 ];
 
 export function entryForPath(pathname: string): ContentsEntry | undefined {

@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import ReportPageHeader from "@TurtleFinance/Report/ReportPageHeader";
 import { entryForPath } from "@TurtleFinance/Report/ReportContents";
 import { PAPER } from "@TurtleFinance/Report/ReportTokens";
+import MarketStatusStrip from "@TurtleFinance/Market/MarketStatusStrip";
 
 interface DockLayoutProps {
     title: React.ReactNode;
@@ -24,6 +25,7 @@ export default function DockLayout({ title, actions, deck, kicker, children }: D
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100dvh", background: PAPER }}>
+            <MarketStatusStrip />
             <ReportPageHeader kicker={kicker ?? autoKicker} title={title} deck={deck} actions={actions} />
             <div
                 style={{

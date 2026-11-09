@@ -104,7 +104,16 @@ export default function ForecastConfig({ value, onChange, mode }: ForecastConfig
                     mode={"multiple"}
                     value={value.methods}
                     onChange={(v) => set("methods", v)}
-                    options={methods.map((m) => ({
+                    options={[
+                        {
+                            value: "auto",
+                            label: (
+                                <Tooltip title={"the model configured per stock (Forecast tab → Model for this stock)"} placement={"left"}>
+                                    auto (each stock's own model)
+                                </Tooltip>
+                            ),
+                        },
+                        ...methods.map((m) => ({
                         value: m.key,
                         label: (
                             <Tooltip title={m.description} placement={"left"}>
@@ -112,7 +121,8 @@ export default function ForecastConfig({ value, onChange, mode }: ForecastConfig
                                 {m.seasonal ? " (seasonal)" : ""}
                             </Tooltip>
                         ),
-                    }))}
+                    })),
+                    ]}
                     placeholder={"e.g. Holt-Winters multiplicative"}
                 />
             </Form.Item>

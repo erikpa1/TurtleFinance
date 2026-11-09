@@ -1,6 +1,7 @@
 import React from "react";
 import { Button, Tabs, message } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
+import { notifyJobProblem } from "@TurtleFinance/Report/notifyJobProblem";
 
 import DockLayout from "@TurtleFinance/Common/DockLayout";
 import { CategoryChips, TagChips } from "@TurtleFinance/Common/Chips";
@@ -10,6 +11,9 @@ import CompaniesApi from "@TurtleFinance/Data/CompaniesApi";
 import { fmtAgo, fmtCompact, fmtDateTime, fmtMultiple, fmtPct, fmtPrice, fmtSignedPct } from "@TurtleFinance/Data/Format";
 import { useFinanceLookups } from "@TurtleFinance/Hooks/useFinanceLookups";
 import { useJobPoller } from "@TurtleFinance/Hooks/useJobPoller";
+import { useMarketStatus } from "@TurtleFinance/Hooks/useMarketStatus";
+import SettingsApi from "@TurtleFinance/Data/SettingsApi";
+import Settings from "@TurtleFinance/Data/Settings";
 import COUCompanyDrawer from "@TurtleFinance/Companies/COUCompanyDrawer";
 import OverviewTab from "@TurtleFinance/Companies/Detail/OverviewTab";
 import ForecastTab from "@TurtleFinance/Companies/Detail/ForecastTab";
@@ -18,13 +22,16 @@ import SeasonalityTab from "@TurtleFinance/Companies/Detail/SeasonalityTab";
 import OptionsTab from "@TurtleFinance/Companies/Detail/OptionsTab";
 import AiTab from "@TurtleFinance/Companies/Detail/AiTab";
 import PricesTab from "@TurtleFinance/Companies/Detail/PricesTab";
+import MovementTab from "@TurtleFinance/Movement/MovementTab";
+import CompanyFactorsTab from "@TurtleFinance/Factors/CompanyFactorsTab";
+import CompanyStrategyTab from "@TurtleFinance/Strategies/CompanyStrategyTab";
 import KeyFiguresStrip from "@TurtleFinance/Report/KeyFiguresStrip";
 import ReportEmptyState from "@TurtleFinance/Report/ReportEmptyState";
 import ReportErrorNote from "@TurtleFinance/Report/ReportErrorNote";
 import { KeyFiguresSkeleton, TableSkeleton } from "@TurtleFinance/Report/ReportSkeletons";
 import { FONT_MONO, MUTED } from "@TurtleFinance/Report/ReportTokens";
 
-const TABS = ["overview", "forecast", "backtest", "seasonality", "options", "ai", "prices"] as const;
+const TABS = ["overview", "movement", "forecast", "backtest", "seasonality", "factors", "strategy", "options", "ai", "prices"] as const;
 
 // CompanyDetailDock is the per-company research note. The active tab lives in
 // the URL (/companies/:companyUid/:tab) so it survives reloads and can be linked.
@@ -40,6 +47,12 @@ export default function CompanyDetailDock() {
     const [editOpen, setEditOpen] = React.useState(false);
     const [jobUid, setJobUid] = React.useState("");
     const [version, setVersion] = React.useState(0);
+    const [settings, setSettings] = React.useState<Settings | null>(null);
+    const offline = useMarketStatus((st) => st.usage?.offline ?? false);
+
+    React.useEffect(() => {
+        SettingsApi.Get().then(setSettings).catch(() => {});
+    }, []);
 
     const activeTab = (TABS as readonly string[]).includes(tab ?? "") ? (tab as string) : "overview";
 
@@ -62,7 +75,7 @@ export default function CompanyDetailDock() {
 
     const job = useJobPoller(jobUid, (j) => {
         if (j.status === "done" && j.errors.length === 0) message.success(`Sync finished: ${j.message}`);
-        else message.error(j.errors?.[0] || j.message || "Sync failed");
+        else notifyJobProblem(j, "Sync failed");
         refresh();
         setVersion((v) => v + 1);
     });
@@ -156,7 +169,7 @@ export default function CompanyDetailDock() {
                     { label: "Div. yield", value: fmtPct(f.dividendYield) },
                     { label: "Market cap", value: fmtCompact(f.marketCap), unit: f.marketCap ? company.currency : undefined },
                 ]}
-                footnote={`prices ${company.metrics.firstDate || "–"} → ${company.metrics.lastDate || "–"} (${company.metrics.bars.toLocaleString()} bars) · synced ${fmtAgo(company.lastPriceSync)} · fundamentals ${fmtAgo(company.lastFundamentalsSync)}`}
+                footnote={freshnessNote(company, settings, offline)}
             />
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginTop: -14 }}>
@@ -193,9 +206,12 @@ export default function CompanyDetailDock() {
                 destroyOnHidden
                 items={[
                     { key: "overview", label: "Overview", children: <OverviewTab key={version} company={company} /> },
+                    { key: "movement", label: "Movement", children: <MovementTab key={version} company={company} /> },
                     { key: "forecast", label: "Forecast", children: <ForecastTab company={company} /> },
                     { key: "backtest", label: "Backtest & simulation", children: <BacktestTab company={company} /> },
                     { key: "seasonality", label: "Seasonality", children: <SeasonalityTab key={version} company={company} /> },
+                    { key: "factors", label: "Oil & gas", children: <CompanyFactorsTab company={company} /> },
+                    { key: "strategy", label: "Strategy", children: <CompanyStrategyTab company={company} /> },
                     { key: "options", label: "Options", children: <OptionsTab company={company} /> },
                     {
                         key: "ai",
@@ -234,3 +250,18 @@ export default function CompanyDetailDock() {
     );
 }
 
+
+// freshnessNote says where the numbers come from: stored prices (and when they
+// were fetched) and the fundamentals snapshot with its cache lifetime.
+function freshnessNote(company: Company, settings: Settings | null, offline: boolean): string {
+    const m = company.metrics;
+    const fundDays = settings ? Math.round(settings.fundamentalsMaxAgeHours / 24) : 7;
+    const priceHours = settings?.priceMaxAgeHours ?? 12;
+    const prices = m.bars
+        ? `prices cached in MongoDB · ${m.firstDate} → ${m.lastDate} (${m.bars.toLocaleString()} bars) · fetched ${fmtDateTime(company.lastPriceSync)} (${fmtAgo(company.lastPriceSync)}; bulk syncs skip it for ${priceHours} h)`
+        : "no prices stored yet";
+    const fund = company.lastFundamentalsSync && new Date(company.lastFundamentalsSync).getFullYear() > 1971
+        ? `fundamentals ${fmtDateTime(company.lastFundamentalsSync)} (refreshes after ${fundDays} days)`
+        : "no fundamentals snapshot";
+    return `${prices} · ${fund}${offline ? " · offline mode: nothing is refreshed" : ""}`;
+}

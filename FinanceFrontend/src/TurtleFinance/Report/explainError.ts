@@ -6,6 +6,34 @@ export function explainError(error: any): { message: string; fix?: string } {
     const message = typeof error === "string" ? error : ErrorText(error);
     const m = message.toLowerCase();
 
+    // Offline-first data policy (backend market/cache.go)
+    if (m.startsWith("stopped after")) {
+        const reason = explainError(message.replace(/^stopped after \d+ of \d+ companies:\s*/i, "")).fix;
+        return {
+            message,
+            fix: `The job stopped early instead of hammering the provider. Companies already synced are skipped next time, so just run it again later.${reason ? " " + reason : ""}`,
+        };
+    }
+    if (m.startsWith("imported") && m.includes("prices synced for")) {
+        return {
+            message,
+            fix: "All companies were created; only the price downloads paused. Run \"Sync prices\" on § 02 Companies later – already synced stocks are skipped.",
+        };
+    }
+    if (m.includes("offline mode is on")) {
+        return { message, fix: "Turn offline mode off in Settings → Data & requests, or import the data as CSV." };
+    }
+    if (m.includes("cooling down")) {
+        const until = /until (\d{1,2}:\d{2})/.exec(message)?.[1];
+        return {
+            message,
+            fix: `The provider rate-limited us, so it is paused${until ? ` until ${until}` : ""}. Wait, or press "Resume now" on § C Data usage. Cached data is used meanwhile.`,
+        };
+    }
+    if (m.includes("daily request budget")) {
+        return { message, fix: "Today's request budget for this provider is used up. Wait until midnight or raise it in Settings → Data & requests (0 = unlimited)." };
+    }
+
     if (m.includes("429") || m.includes("rate limit")) {
         return {
             message,

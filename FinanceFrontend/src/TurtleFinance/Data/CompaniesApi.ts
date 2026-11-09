@@ -8,6 +8,7 @@ import turxios, {
 } from "@Turtle/Api/Turxios";
 import Company, {
     CategoryAssignment,
+    CompanyForecastConfig,
     SearchHit,
 } from "@TurtleFinance/Data/Company";
 import Job from "@TurtleFinance/Data/Job";
@@ -98,5 +99,18 @@ export default class CompaniesApi {
                 model: model ?? "",
             }),
         );
+    }
+
+    // Per-stock forecasting model (ideas #6)
+    static async SetForecastConfig(uid: string, cfg: CompanyForecastConfig): Promise<Company> {
+        return Company.From(await PostForm(`${BASE}/company/forecast-config`, { data: cfg }, { params: { uid } }));
+    }
+
+    static async AutoSelectModel(uid: string): Promise<Company> {
+        return Company.From((await turxios.post(`${BASE}/forecast/auto-select`, null, { params: { uid } })).data);
+    }
+
+    static async AutoSelectModelMany(uids: string[]): Promise<Job> {
+        return Job.From(await PostForm(`${BASE}/forecast/auto-select`, { uids }));
     }
 }

@@ -8,6 +8,7 @@ Backend contract: `../../../FinanceBackend/finance/CLAUDE.md` (REST under
 
 | Path | What |
 |------|------|
+| `Data/` (new) | `MovementTypes`, `Factor` + `FactorsApi`, `StrategyTypes` + `StrategiesApi`, `LedgerTypes` (Transaction, FX, tax shapes) + `LedgerApi` (`LedgerApi`, `FxApi`, `TaxApi` incl. blob download); `Company.forecast` (per-stock model) and movement fields on `Metrics`; `CompaniesApi.SetForecastConfig/AutoSelectModel(Many)`, `AnalyticsApi.Movement` |
 | `Data/` | Entity classes with `ToJson`/`FromJson` (`Company` + `Fundamentals` + `Metrics`, `Tag`, `Category`, `Job`, `Settings`, `AiAnalysis`), plain contract shapes in `Types.ts`, number formatting in `Format.ts`, and static API clients (`CompaniesApi`, `PricesApi`, `TagsApi`, `CategoriesApi`, `IndexesApi`, `ForecastApi`, `AnalyticsApi`, `OptionsApi`, `AiApi`, `JobsApi`, `SettingsApi`) on `@Turtle/Api/Turxios` |
 | `Report/` | The design system (see below): tokens, `ReportPageHeader`, `RuledSection`, `KeyFiguresStrip`, `FactTable`, `SourceFootnote`, `ReportEmptyState`, `ReportErrorNote` (+ `explainError`), skeletons, `Ticker`/`ClippedName`, `reportChartOptions`, `ReportContents` (nav = table of contents) |
 | `Common/` | `DockLayout` (report masthead + scrolling body), `Panel` (= `RuledSection`), `StatCard` (legacy figure cell), `Chart` (react-apexcharts + report chart style), `CategoryChips`/`TagChips`, `SignedPct`/`PeValue`, `ModelSelect` (Ollama models), `AiContent` (serif note renderer), `JobProgress` (log line + hairline progress) |
@@ -21,6 +22,14 @@ Backend contract: `../../../FinanceBackend/finance/CLAUDE.md` (REST under
 | `ForecastLab/ForecastLabDock` | `/forecast-lab` – backtest across many stocks (job), aggregate leaderboard |
 | `Categories/` | `/categories` – thematic category CRUD (description feeds the AI prompt), AI classify jobs, members |
 | `Tags/TagsDock` | `/tags` |
+| `Movement/` | `MovementTab` (company tab `movement`: range/ATR/gap, trend R², steadiness, return histogram, underwater, rolling range/vol from `/analytics/movement`), `steadiness.ts` (shared wording) |
+| `Screener/SteadyGrowersTable` | screener tab "Steady growers": ranked by `metrics.steadinessScore` with movement columns |
+| `Factors/` | `/factors` "Oil & gas": `FactorRegister` (series, sync job, CSV import, custom series drawer), `FactorExposureScreen` (`/factors/exposure`, ranked by \|t\|); company tab `factors`: `CompanyFactorsTab` + `FactorExposureDetail` (summary sentence, facts, lag profile, scatter, rolling beta, joint regression); `factorWords.ts` |
+| `Strategies/` | `/strategies` (`?company=` preselects): `StrategyWorkbench` (form + `StrategyResultView`: verdict, IS/OOS `PerformanceComparison` with emphasised OOS column, equity+drawdown with split marker, Monte Carlo, `SweepHeatmap` full vs OOS Sharpe, `TradesTable`, numbered Method note from `assumptions`, send to paper ledger), `StrategyCompare` (≤ 12 variants), `StrategyBatch` (job across selection/tag); `StrategyForm` (dynamic params from `/strategies`), `useStrategyCatalog`; company tab `strategy` = `CompanyStrategyTab` |
+| `Forecast/StockModelSection` | per-stock model (auto/manual, re-run auto-selection, scores) at the top of the Forecast tab; `ForecastConfig` offers the pseudo-method `auto`; Companies list shows the effective model + bulk "Pick forecast models" job |
+| `Market/` | Offline-first policy UI: `DataUsageDock` (`/data-usage`, Appendix C: per-provider requests vs budget, cache hits, stale served, refused, 429s, cooldowns with "Resume now", 14-day history, cache inventory with per-kind clear, policy note + `make backup/restore`), `MarketStatusStrip` (quiet ochre-marked line on top of every page via `DockLayout` when offline or a provider is paused) |
+| `Hooks/useMarketStatus` | zustand store for `/market/usage`; polled every 60 s from `App.tsx` and refreshed whenever `useJobPoller` sees a job finish or Settings are saved |
+| `Ledger/` | `/ledger` "Ledger & tax": `TransactionsTab` (accounts incl. simulated paper accounts, holdings, journal, `TransactionDrawer`, CSV import with problems list), `FxTab` (ECB status, sync job, CSV import, converter), `TaxTab` (`TaxProfileEditor` edits every rule → sent as `profile`; `TaxStatement` form-style summary; sales with lot detail, dividends, rates used, warnings first, profile notes + references; CSV/Markdown download; `TaxDraftPanel` print view) |
 | `Ai/AiDock` | `/ai` – Ollama status/models/default model, ask across companies |
 | `Jobs/JobsDock` | `/jobs` – progress, errors, auto refresh |
 | `Settings/SettingsDock` | `/settings` – data provider (Yahoo / FMP + key), history years, benchmark, risk-free rate, auto-sync, Ollama |
@@ -34,6 +43,8 @@ Backend contract: `../../../FinanceBackend/finance/CLAUDE.md` (REST under
 - Dock = `DockLayout` (title + one-sentence `deck` + actions), then `KeyFiguresStrip`, `RuledSection`s, `Table` + `Drawer` create/update form.
 - POST bodies: form field `data` = JSON via `PostEntity` / `PostForm` (other form fields as in the contract).
 - Ratios and returns from the backend are fractions; format with `Data/Format.ts`.
+- Offline-first: never call Yahoo-dependent endpoints in loops from the UI. Known backend refusals ("offline mode is on", "cooling down", "daily request budget", "stopped after N of M companies", "imported N companies; prices synced for …") are explained by `Report/explainError`; failed jobs toast via `Report/notifyJobProblem` and `JobProgress` prints the fix. Settings → "Data & requests" edits the policy (`offlineMode`, `priceMaxAgeHours`, `fundamentalsMaxAgeHours`, `searchCacheDays`, `optionsCacheMinutes`, `dailyRequestBudget`, `cooldownMinutes`). Add company search groups hits suffixed " · in database" first and opens them instead of adding.
+- Printing: `@media print` in `src/index.css` hides the nav; adding `tf-print-draft` to `body` prints only `.tf-print-area` (tax draft).
 - Errors: the Turxios interceptor toasts the backend's plain-text body (e.g. Yahoo HTTP 429), so components don't toast errors again.
 - Long work (sync, import, classify, lab) returns a `Job`; use `useJobPoller`.
 - Feedback via antd static `message`.
