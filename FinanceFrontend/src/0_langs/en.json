@@ -1,0 +1,41 @@
+{
+    "nav.dashboard": "Dashboard",
+    "nav.companies": "Companies",
+    "nav.screener": "Screener · P/E list",
+    "nav.indexes": "Index import",
+    "nav.forecastLab": "Forecast lab",
+    "nav.categories": "Categories",
+    "nav.tags": "Tags",
+    "nav.ai": "AI · Ollama",
+    "nav.jobs": "Jobs",
+    "nav.settings": "Settings",
+
+    "category.group.essentials": "Essentials",
+    "category.group.vice": "Vice / addictive",
+    "category.group.strategic": "Strategic",
+    "category.group.esg": "ESG",
+    "category.group.other": "Other",
+
+    "job.status.queued": "Queued",
+    "job.status.running": "Running",
+    "job.status.done": "Done",
+    "job.status.failed": "Failed",
+
+    "frequency.D": "Daily",
+    "frequency.W": "Weekly",
+    "frequency.M": "Monthly",
+
+    "seriesType.close": "Close price",
+    "seriesType.logClose": "Log close price",
+
+    "groupBy.sector": "Sector",
+    "groupBy.category": "Category",
+    "groupBy.tag": "Tag",
+    "groupBy.index": "Index",
+
+    "tag.type.user": "User",
+    "tag.type.index": "Index",
+
+    "provider.yahoo": "Yahoo Finance – no key, includes options",
+    "provider.fmp": "Financial Modeling Prep – API key, richer fundamentals"
+}

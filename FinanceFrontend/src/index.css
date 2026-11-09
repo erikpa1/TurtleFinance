@@ -1,0 +1,92 @@
+/* Research-note base layer. Tokens live in TurtleFinance/Report/ReportTokens.ts */
+html,
+body {
+    margin: 0;
+    padding: 0;
+    background: #f4f2ea;
+    color: #171717;
+    font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* No motion anywhere: state changes are instant cuts. */
+*,
+*::before,
+*::after {
+    transition: none !important;
+    animation-duration: 0s !important;
+}
+
+/* Numbers, tickers, dates and every table body: mono + tabular figures. */
+.tf-mono,
+.ant-table-tbody,
+.ant-statistic-content,
+.ant-input-number-input,
+.ant-pagination,
+.ant-descriptions-item-content {
+    font-family: "IBM Plex Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+}
+.ant-table-tbody { font-size: 12px; }
+
+/* Table header = ruled report header: small caps label, ink rule under it. */
+.ant-table-wrapper .ant-table-thead > tr > th {
+    font-family: "IBM Plex Sans", Arial, sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #4a4844;
+    border-bottom: 1px solid #171717 !important;
+    border-top: 1px solid #171717;
+}
+.ant-table-wrapper .ant-table { background: transparent; }
+.ant-table-wrapper .ant-table-tbody > tr > td { border-bottom: 1px solid #e3dfd2; }
+.ant-table-wrapper .ant-table-tbody > tr.ant-table-row-selected > td:first-child {
+    box-shadow: inset 3px 0 0 #b8741a;
+}
+
+/* Headings are editorial serif. */
+h1, h2, h3, h4, h5,
+.ant-typography h1, .ant-typography h2, .ant-typography h3, .ant-typography h4,
+.ant-modal-title, .ant-drawer-title {
+    font-family: "Source Serif 4", Georgia, serif !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+}
+
+/* Buttons: hover = colour inversion, no lift, no glow. */
+.ant-btn { box-shadow: none !important; }
+.ant-btn-default:not(:disabled):hover { background: #171717 !important; color: #f4f2ea !important; border-color: #171717 !important; }
+.ant-btn-primary:not(:disabled):hover { background: #b8741a !important; border-color: #b8741a !important; }
+.ant-btn-link, .ant-btn-text { text-decoration: none; }
+.ant-btn-link:not(:disabled):hover, .ant-btn-text:not(:disabled):hover { text-decoration: underline; background: transparent !important; color: #171717 !important; }
+
+/* Tags read as bracketed labels, not pills. */
+.ant-tag { font-family: "IBM Plex Mono", Menlo, monospace; font-size: 11px; background: transparent; }
+
+.ant-tabs-top > .ant-tabs-nav::before { border-bottom: 1px solid #171717 !important; }
+.ant-tabs-tab { font-family: "IBM Plex Sans", Arial, sans-serif; text-transform: uppercase; font-size: 11px; letter-spacing: 0.08em; }
+
+.ant-skeleton .ant-skeleton-title,
+.ant-skeleton .ant-skeleton-paragraph > li,
+.ant-skeleton-element .ant-skeleton-input,
+.ant-skeleton-element .ant-skeleton-button {
+    background: #e6e1d3 !important;
+}
+
+.ant-message-notice-content { border: 1px solid #171717; box-shadow: none !important; font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+.ant-dropdown-menu, .ant-select-dropdown, .ant-popover-inner, .ant-tooltip-inner { box-shadow: 0 0 0 1px #171717 !important; }
+.ant-tooltip-inner { background: #171717; color: #f4f2ea; font-size: 12px; }
+
+.apexcharts-tooltip.apexcharts-theme-light { border: 1px solid #171717 !important; box-shadow: none !important; background: #faf8f2 !important; font-family: "IBM Plex Mono", monospace; }
+.apexcharts-tooltip-title { background: #ebe7da !important; border-bottom: 1px solid #d6d2c4 !important; }
+
+.tf-ai-content { white-space: pre-wrap; font-family: inherit; line-height: 1.55; margin: 0; }
+.tf-itm td { background: #f1e3cc !important; }
+
+/* Clickable table rows show an underline on the ticker, nothing else moves. */
+.tf-row-link { cursor: pointer; }
+.tf-row-link:hover .tf-ticker { text-decoration: underline; }
+
+.no-border-tabs.ant-tabs-top > .ant-tabs-nav::before { border-bottom: none !important; }
